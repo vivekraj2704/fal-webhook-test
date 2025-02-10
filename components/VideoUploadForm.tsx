@@ -1,68 +1,134 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { useToast } from "@/components/ui/use-toast"
 import { Loader2 } from "lucide-react"
-import { useUploadThing } from "@/lib/uploadthing"
-import { useDropzone } from 'react-dropzone';
-import { Textarea } from "@/components/ui/textarea";
-import { Widget } from "@uploadcare/react-widget";
+import { Widget } from "@uploadcare/react-widget"
 
 export default function VideoProcessingUI() {
   const [processedVideoUrl, setProcessedVideoUrl] = useState("")
   const [isProcessing, setIsProcessing] = useState(false)
-  const { toast } = useToast()
   const [videoUrl, setVideoUrl] = useState("")
-  const [file, setFile] = useState<File | null>(null)
+  const [docId, setDocId] = useState("") // Store docId to track the job
   const [transformationType, setTransformationType] = useState("")
-  const { startUpload, isUploading } = useUploadThing("videoUploader")
+  const { toast } = useToast()
 
   const handleFileUpload = (fileInfo: any) => {
-    setVideoUrl(fileInfo.cdnUrl);
-  };
+    setVideoUrl(fileInfo.cdnUrl)
+  }
 
+  // const handleSubmit = async (e: React.FormEvent) => {
+  //   e.preventDefault()
+  //   if (!videoUrl || !transformationType) {
+  //     toast({
+  //       title: "Error",
+  //       description: "Please select a file and enter a transformation type",
+  //       variant: "destructive",
+  //     })
+  //     return
+  //   }
+  //   setIsProcessing(true)
+
+  //   try {
+  //     const response = await fetch("/api/process-video", {
+  //       method: "POST",
+  //       headers: { "Content-Type": "application/json" },
+  //       body: JSON.stringify({
+  //         videoUrl: videoUrl,
+  //         transformationType,
+  //       }),
+  //     })
+
+  //     if (!response.ok) throw new Error("Failed to process video")
+
+  //     const data = await response.json()
+  //     setDocId(data.docId) // Store docId to track job status
+  //     toast({
+  //       title: "Success",
+  //       description: "Video is being processed...",
+  //     })
+
+  //     // Start polling for video completion
+  //     pollForProcessedVideo(data.docId)
+  //   } catch (error) {
+  //     console.error("Error:", error)
+  //     toast({
+  //       title: "Error",
+  //       description: "Failed to upload and process video",
+  //       variant: "destructive",
+  //     })
+  //   }
+  // }
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
+    e.preventDefault();
     if (!videoUrl || !transformationType) {
       toast({
         title: "Error",
-        description: "Please select a file and transformation type",
+        description: "Please select a file and enter a transformation type",
         variant: "destructive",
-      })
-      return
+      });
+      return;
     }
-    setIsProcessing(true)
-
+    setIsProcessing(true);
+  
     try {
-        const response = await fetch("/api/process-video", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            videoUrl: videoUrl,
-            transformationType,
-          }),
-        })
-
-        if (!response.ok) throw new Error("Failed to process video")
-
-        const data = await response.json()
-        setProcessedVideoUrl(data.link)
-        toast({
-          title: "Success",
-          description: "Video processed",
-        })
+      const response = await fetch("/api/process-video", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          videoUrl: videoUrl,
+          transformationType,
+        }),
+      });
+  
+      const data = await response.json();
+      console.log("API Response from /api/process-video:", data); // Debugging log
+  
+      if (!data.docId) {
+        console.error("docId is missing in API response");
+        throw new Error("docId missing in API response");
+      }
+  
+      setDocId(data.docId); // Store docId to track job status
+      pollForProcessedVideo(data.docId); // Start polling for video completion
+  
+      toast({
+        title: "Success",
+        description: "Video is being processed...",
+      });
     } catch (error) {
-      console.error("Error:", error)
+      console.error("Error:", error);
       toast({
         title: "Error",
         description: "Failed to upload and process video",
         variant: "destructive",
-      })
-    } finally {
-      setIsProcessing(false)
+      });
     }
+  };
+  
+
+  const pollForProcessedVideo = async (docId: string) => {
+    console.log(docId);
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/check-video-status?docId=${docId}`)
+        const result = await res.json()
+
+        if (result.status === "completed" && result.processedVideoUrl) {
+          setProcessedVideoUrl(result.processedVideoUrl)
+          setIsProcessing(false)
+          clearInterval(interval)
+          toast({
+            title: "Success",
+            description: "Video processing complete!",
+          })
+        }
+      } catch (error) {
+        console.error("Error checking video status:", error)
+      }
+    }, 10000) // Poll every 5 seconds
   }
 
   return (
@@ -72,14 +138,8 @@ export default function VideoProcessingUI() {
         {/* Left Panel */}
         <div className="w-full md:min-h-[60vh] md:w-1/2 bg-gray-800 p-4 md:p-6 rounded-lg">
           <form onSubmit={handleSubmit} className="space-y-6 md:space-y-8">
-            {/* <Input
-              type="file"
-              accept="video/*"
-              onChange={(e) => setFile(e.target.files?.[0] || null)}
-              className="md:file:ml-[20%] file:py-2 file:px-6 file:rounded-md file:border-0 file:text-lg file:font-semibold file:bg-violet-50 file:text-violet-700 hover:bg-violet-100 text-black w-full mt-[30px] p-[30px] h-full"
-            /> */}
             <div className="flex items-center justify-center w-full h-32 border-2 border-dashed border-gray-400 rounded-lg cursor-pointer">
-            <Widget publicKey="59246653fdb28d52a88d" onChange={handleFileUpload} />
+              <Widget publicKey="59246653fdb28d52a88d" onChange={handleFileUpload} />
             </div>
             <Input
               type="text"
@@ -88,11 +148,12 @@ export default function VideoProcessingUI() {
               className="text-black w-full mt-[40px]"
               onChange={(e) => setTransformationType(e.target.value)}
             />
-            <Button type="submit" disabled={isUploading} className="w-full">
-              {isUploading ? "Uploading..." : "Upload and Process"}
+            <Button type="submit" disabled={isProcessing} className="w-full">
+              {isProcessing ? "Processing..." : "Upload and Process"}
             </Button>
           </form>
         </div>
+
         {/* Right Panel (Result) */}
         <div className="w-full md:w-1/2 bg-gray-800 p-4 md:p-6 rounded-lg flex flex-col items-center justify-center relative min-h-[300px]">
           <h2 className="absolute top-4 left-6 text-lg font-semibold">Result</h2>
@@ -123,4 +184,3 @@ export default function VideoProcessingUI() {
     </div>
   )
 }
-
